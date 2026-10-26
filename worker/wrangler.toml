@@ -1,0 +1,15 @@
+# CF Worker 只做一件事：每 15 分钟 POST 一次 /api/collect
+name = "ndx-ticker"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+
+# 不需要 KV / R2 / D1 绑定 —— 存储全在 Vercel Blob
+[triggers]
+crons = ["*/15 * * * *"]
+
+[vars]
+# 部署前改成你的 Vercel 域名
+ORIGIN = "https://ndx-dashboard.vercel.app"
+
+# CRON_SECRET 不要写在这里，用 wrangler secret put CRON_SECRET
+# 免费额度：100,000 请求/天（实际 96 次/天）、10 ms CPU/请求、5 个 Cron Trigger

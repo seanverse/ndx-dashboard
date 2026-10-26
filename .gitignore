@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.data/
+.env
+.env.local
+.vercel/
+*.log
+worker/.wrangler/
+worker/node_modules/
+.DS_Store

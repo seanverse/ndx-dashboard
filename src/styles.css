@@ -1,0 +1,84 @@
+@import 'tailwindcss';
+
+/*
+ * 白底蓝字，不复刻参考图的深色底。
+ * 理由（TECH-001 §3.4）：深色底 + 红黄绿多色语义长时间阅读对比度不足。
+ * 语义色只出现在数值与状态灯，容器一律浅色。
+ */
+@theme {
+  --color-brand: #0b57d0;
+  --color-brand-soft: #e8f0fe;
+  --color-ink: #0a2540;
+  --color-muted: #5b6b7f;
+  --color-line: #e3eaf3;
+  --color-canvas: #f6f9fe;
+
+  /* A 股习惯：涨红跌绿 */
+  --color-up: #d92b2b;
+  --color-down: #0a8f4a;
+
+  /* 状态灯 */
+  --color-lv-ok: #0a8f4a;
+  --color-lv-warn: #c77700;
+  --color-lv-risk: #d92b2b;
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
+    'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'Cascadia Mono', 'SF Mono', Consolas, Menlo, monospace;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 所有数字统一等宽，避免位数变化时行内跳动 */
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* 面板通用。flex 列布局让同一行内的高矮卡片能拉齐底边（配合 .panel 的 h-full） */
+.panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #fff;
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+}
+
+/*
+  退出「拉齐底边」行为：内容高度即面板高度。
+  用于并排但内容量差很多的面板（综合判断 / 操作建议），
+  否则矮的那个会被拉到高个子的高度、底部留一大片空白。
+*/
+.panel--auto {
+  height: auto;
+}
+
+/* 顶部评分条：移动端 sticky，保证首屏 3 秒能看到风险档位 */
+.sticky-score {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  backdrop-filter: saturate(180%) blur(8px);
+  background: color-mix(in srgb, #fff 88%, transparent);
+  border-bottom: 1px solid var(--color-line);
+}
+
+@media print {
+  .no-print {
+    display: none;
+  }
+}
