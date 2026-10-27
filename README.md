@@ -131,16 +131,27 @@ curl -X POST "$S/api/collect" -H "Authorization: Bearer $K"
 
 ### 5.3 CF Worker
 
+**前置条件**：`GET /api/health` 的 `store_status.mode` 已经是 `blob`，且手动 `POST /api/collect` 能返回 200。Worker 只负责定时发这一个请求，接口没通之前部署它只会得到每 15 分钟一条失败日志。
+
 ```bash
-npx wrangler login                                 # 浏览器授权一次
-cd worker
-npx wrangler secret put CRON_SECRET                # 粘贴与 Vercel 相同的值
-# 把 wrangler.toml 里的 ORIGIN 改成真实域名
-npx wrangler deploy
-npx wrangler tail                                  # 等一个 15 分钟周期看日志
+npx wrangler login                                 # 浏览器授权一次，凭证存本机
+npm run worker:deploy                              # 先建出 Worker
+npm run worker:secret                              # 再写 CRON_SECRET（与 Vercel 同值）
+npm run worker:tail                                # 等一个 15 分钟周期看日志
 ```
 
-`ORIGIN` 必须与 Vercel 生产域名完全一致（含 `https://`，不带尾斜杠），否则 Worker 404 且 cron 没有重试。
+**部署必须排在写 secret 之前**：`wrangler secret put` 作用在已存在的 Worker 上，脚本还不存在时会报 `script not found`。两条命令之间若有 cron 恰好触发，Worker 会打印 `ORIGIN 或 CRON_SECRET 未配置` 后直接返回，不写任何数据，下一个 15 分钟周期自然恢复。
+
+三个脚本都带 `--config worker/wrangler.toml`，所以在仓库根目录执行即可，不用 `cd worker`。
+
+`ORIGIN` 写在 `worker/wrangler.toml` 的 `[vars]` 里，必须与 Vercel 生产域名完全一致（含 `https://`，不带尾斜杠）。写错时 Worker 收到 404/530 且 Cloudflare 的 cron 没有重试机制，只能靠 `tail` 的日志发现。
+
+`wrangler login` 打不开浏览器时，改用 API Token：Cloudflare 控制台 → My Profile → API Tokens → 用 `Edit Cloudflare Workers` 模板建一个，然后
+
+```bash
+export CLOUDFLARE_API_TOKEN=xxx    # PowerShell: $env:CLOUDFLARE_API_TOKEN="xxx"
+npm run worker:deploy
+```
 
 ### 5.4 全链路通
 
@@ -164,6 +175,7 @@ npx wrangler tail                                  # 等一个 15 分钟周期�
 - [ ] `meta.warnings` 出现「恐贪底层为 S&P 500」提示（口径已知偏差，不是故障）
 - [ ] 日更后 `dxyCheck.ok === true`，且 `dxyCheck.sameSession === true`（收盘后 3 小时内跑，容差 0.05%；跨时点手动触发时容差放宽到 0.5%，只做量级校验）
 - [ ] 等一个 15 分钟周期，`latest.json` 的 `generatedAt` 推进
+- [ ] `npm run worker:tail` 里出现 `{"ok":true,"status":200,...}`（`status:401` 是两侧 `CRON_SECRET` 不一致）
 - [ ] 非交易时段触发 `/api/collect` 返回 `skipped:'off-hours'`，不写 Blob
 - [ ] 8 分钟内重复触发返回 `skipped:'too-soon'`（幂等窗口）
 - [ ] Vercel Blob 用量页：Advanced Ops 增速 ≈ 每天 21 次

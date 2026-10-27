@@ -8,8 +8,8 @@ compatibility_date = "2026-10-01"
 crons = ["*/15 * * * *"]
 
 [vars]
-# 部署前改成你的 Vercel 域名
-ORIGIN = "https://ndx-dashboard.vercel.app"
+# Vercel 生产域名，尾部不要带斜杠（代码里也会再兜一次）
+ORIGIN = "https://ndx-dashboard-xi.vercel.app"
 
 # CRON_SECRET 不要写在这里，用 wrangler secret put CRON_SECRET
 # 免费额度：100,000 请求/天（实际 96 次/天）、10 ms CPU/请求、5 个 Cron Trigger
