@@ -10,8 +10,10 @@
  *   - 日期分片（daily/YYYY-MM-DD）：写一次不再变，是唯一的跨日历史
  * 分片路径必须走 readAt / writeAt，因为键名在编译期不存在。
  *
- * 本地开发：没有 BLOB_READ_WRITE_TOKEN 时自动落到 .data/ 目录，
+ * 本地开发：没有任何 Blob 变量且不在 Vercel 上时自动落到 .data/ 目录，
  * 使 `npm run dev` 与手工触发端点无需任何云账号即可跑通全链路。
+ * 反之配了一半、或部署在 Vercel 却没配全，一律视为配置错误（storeStatus().mode === 'invalid'），
+ * 既不读也不写本地文件 —— 见 storeStatus 的注释。
  */
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
@@ -37,23 +39,89 @@ export interface WriteOptions {
   cacheControlMaxAge?: number
 }
 
-function hasBlob(): boolean {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN && process.env.BLOB_BASE_URL)
+/**
+ * 读环境变量：先认标准名，再按「唯一后缀」兜住带前缀的情况。
+ *
+ * 在 Vercel 建 Blob 库时 Advanced Options 可以给变量加前缀（例如 NDX_BLOB_READ_WRITE_TOKEN），
+ * 而 @vercel/blob 的默认查找只认不带前缀的名字。加了前缀，SDK 就找不到凭证，
+ * 这类失败不会报错，只会表现为「没有数据」。
+ *
+ * 多个前缀同时命中时直接抛错，不猜：猜错 store 会把数据写进另一个库。
+ */
+function readEnv(name: string): string | undefined {
+  const exact = process.env[name]
+  if (exact) return exact
+
+  const matches = Object.keys(process.env).filter(
+    (key) => key.endsWith(`_${name}`) && Boolean(process.env[key]),
+  )
+  if (matches.length > 1) {
+    throw new Error(`环境变量存在多个前缀版本，无法确定使用哪一个：${matches.join(' / ')}`)
+  }
+  const [only] = matches
+  return only === undefined ? undefined : process.env[only]
+}
+
+/** Blob 库的公网基址，末尾斜杠去掉；未配置时为空串 */
+function blobBase(): string {
+  return (process.env.BLOB_BASE_URL ?? '').trim().replace(/\/+$/, '')
 }
 
 function blobUrl(rel: string): string {
-  const base = (process.env.BLOB_BASE_URL ?? '').replace(/\/$/, '')
-  return `${base}/${BLOB_ROOT}/${rel}`
+  return `${blobBase()}/${BLOB_ROOT}/${rel}`
+}
+
+export type StoreMode = 'blob' | 'local' | 'invalid'
+
+export interface StoreStatus {
+  mode: StoreMode
+  /** mode 为 invalid 时说明缺了什么，调用方据此给出可执行的提示 */
+  problems: string[]
+}
+
+/**
+ * 三态而不是两态：
+ *   blob    云端可用
+ *   local   本地开发（没有配置任何 Blob 变量，且不在 Vercel 上）
+ *   invalid 配了一半或部署在 Vercel 却没配 —— 此时既不读也不写本地文件
+ *
+ * 区分 invalid 的目的是把「配置错误」和「还没有数据」分开。两者在页面上
+ * 都表现为未就绪，但只有前者需要人去改配置，混在一起会白查很久。
+ */
+export function storeStatus(): StoreStatus {
+  const base = blobBase()
+  const token = readEnv('BLOB_READ_WRITE_TOKEN')
+  const storeId = readEnv('BLOB_STORE_ID')
+  const onVercel = Boolean(process.env.VERCEL)
+  const touched = Boolean(base || token || storeId)
+
+  if (!touched && !onVercel) return { mode: 'local', problems: [] }
+
+  const problems: string[] = []
+  if (!base) {
+    problems.push('缺少 BLOB_BASE_URL（Blob 库的公网域名，形如 https://<store-id>.public.blob.vercel-storage.com）')
+  }
+  if (!token && !storeId) {
+    problems.push('缺少 Blob 凭证 BLOB_READ_WRITE_TOKEN 或 BLOB_STORE_ID（把 Blob 库连接到项目后由 Vercel 注入）')
+  }
+  return problems.length > 0
+    ? { mode: 'invalid', problems }
+    : { mode: 'blob', problems: [] }
 }
 
 function localPath(rel: string): string {
   return path.join(LOCAL_DIR, rel)
 }
 
-/** 读任意相对路径。不存在或解析失败一律返回 null，由调用方按「无此数据」处理。 */
+/** 读任意相对路径。不存在、未配置或解析失败一律返回 null，由调用方按「无此数据」处理。 */
 export async function readAt<T = unknown>(rel: string): Promise<T | null> {
+  const { mode } = storeStatus()
+
+  // invalid 时刻意不落本地：Vercel 上没有历史文件，读它只会把配置问题藏起来
+  if (mode === 'invalid') return null
+
   try {
-    if (hasBlob()) {
+    if (mode === 'blob') {
       const res = await fetch(blobUrl(rel), { cache: 'no-store' })
       if (!res.ok) return null
       return (await res.json()) as T
@@ -67,16 +135,25 @@ export async function readAt<T = unknown>(rel: string): Promise<T | null> {
 
 /** 写任意相对路径。覆盖写，路径固定。 */
 export async function writeAt(rel: string, value: unknown, opts: WriteOptions = {}): Promise<void> {
+  const { mode, problems } = storeStatus()
+  if (mode === 'invalid') {
+    throw new Error(`存储未正确配置，已拒绝写入：${problems.join('；')}`)
+  }
+
   const body = JSON.stringify(value)
 
-  if (hasBlob()) {
+  if (mode === 'blob') {
     const { put } = await import('@vercel/blob')
+    const token = readEnv('BLOB_READ_WRITE_TOKEN')
+    const storeId = readEnv('BLOB_STORE_ID')
     await put(`${BLOB_ROOT}/${rel}`, body, {
       access: 'public',
       addRandomSuffix: false,
       allowOverwrite: true,
       cacheControlMaxAge: opts.cacheControlMaxAge ?? 60,
       contentType: 'application/json',
+      // 有静态 token 就用 token；只有 store id 时交给 OIDC（Vercel 每次请求注入）
+      ...(token ? { token } : { storeId }),
     })
     return
   }
@@ -96,4 +173,10 @@ export function writeJson(key: StoreKey, value: unknown, opts: WriteOptions = {}
   return writeAt(PATHS[key], value, opts)
 }
 
-export const storeMode = (): 'blob' | 'local' => (hasBlob() ? 'blob' : 'local')
+export const storeMode = (): StoreMode => storeStatus().mode
+
+/** 配置错误时抛出可读信息，让脚本与调试端点一眼看到缺什么 */
+export function assertStoreReady(): void {
+  const { mode, problems } = storeStatus()
+  if (mode === 'invalid') throw new Error(`存储未正确配置：${problems.join('；')}`)
+}

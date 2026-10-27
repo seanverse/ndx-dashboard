@@ -14,7 +14,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import type { DailyMetrics, LatestSnapshot } from '../shared/types'
 import { assembleDashboard } from '../server/assemble'
-import { readJson } from '../server/store'
+import { readJson, storeStatus } from '../server/store'
 
 export default async function handler(_req: VercelRequest, res: VercelResponse): Promise<void> {
   // 首访无数据时也要给短缓存，否则前端每 15 秒重试一次会打满 Function 调用
@@ -26,7 +26,16 @@ export default async function handler(_req: VercelRequest, res: VercelResponse):
   ])
 
   if (!latest) {
-    res.status(503).json({ error: 'not_ready', hint: '首次部署后需手动触发 /api/daily 与 /api/collect' })
+    const { mode, problems } = storeStatus()
+    res.status(503).json({
+      error: 'not_ready',
+      // 配置错误与「还没有数据」在页面上都表现为未就绪，这里把区别写进响应，便于直接 curl 定位
+      hint:
+        mode === 'invalid'
+          ? `存储未正确配置：${problems.join('；')}`
+          : '首次部署后需手动触发 /api/daily 与 /api/collect',
+      storage: mode,
+    })
     return
   }
 
