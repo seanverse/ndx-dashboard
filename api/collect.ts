@@ -55,8 +55,10 @@ async function collect(req: VercelRequest, res: VercelResponse) {
   // 日更兜底命中时会整体替换，故用 let
   let metrics = metricsRead
 
-  // 3 幂等
-  if (prev) {
+  // 3 幂等。force=1 跳过（人工排障要立刻看数，等窗口没有意义）；
+  //   鉴权与节奏闸门不受 force 影响——周末 / 维护时段仍然拒写
+  const force = new URL(req.url ?? '', 'http://localhost').searchParams.get('force') === '1'
+  if (!force && prev) {
     const age = now.getTime() - Date.parse(prev.meta.generatedAt)
     if (Number.isFinite(age) && age < MIN_INTERVAL_MS[cadence]) {
       return res.status(200).json({ skipped: 'too-soon', cadence, ageSeconds: Math.round(age / 1000) })
