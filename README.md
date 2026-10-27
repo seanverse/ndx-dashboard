@@ -72,7 +72,7 @@ scripts/         seed / serve / audit-overflow（CDP 量真实布局）
 | `BLOB_BASE_URL` | 读 Blob 的公网基址，**不会自动注入，必须手填** | Vercel 环境变量 |
 | `ORIGIN` | Worker 要打的 Vercel 域名 | `worker/wrangler.toml` |
 
-两个 Blob 变量允许带前缀：建库时勾了 Advanced Options 里的 prefix（例如得到 `NDX_BLOB_READ_WRITE_TOKEN`），代码会按唯一后缀匹配取到；同时存在多个前缀版本则报错。`BLOB_BASE_URL` 不受前缀影响，仍然是固定的名字。
+Blob 变量必须用标准名（建库时 Advanced Options 不要填 prefix，否则 SDK 找不到凭证，表现为「没数据」）。`BLOB_BASE_URL` 不在自动注入之列，无论如何都要手动加。
 
 未设置 `CRON_SECRET` 时两个触发端点一律返回 401（宁可拒，不可裸奔）。
 
@@ -104,7 +104,7 @@ git push -u origin main
    | `BLOB_READ_WRITE_TOKEN` | 建 Blob 并 connect 到项目后自动注入，不用手填 |
    | `BLOB_BASE_URL` | 第 1 步记下的基址，末尾不要带 `/` |
 
-   把 Blob 连接到项目时如果填了前缀（Advanced Options），变量会变成 `NDX_BLOB_READ_WRITE_TOKEN` 这类带前缀的名字，代码能认；但 `BLOB_BASE_URL` 不在自动注入之列，无论有没有前缀都要手动加。
+   建 Blob 时 Advanced Options 的 prefix 留空——变量必须是标准名，带前缀 SDK 认不到。`BLOB_BASE_URL` 不在自动注入之列，要手动加。
 
    配错时的表现：`/api/dashboard` 返回 503 且 `hint` 里直接写明缺哪一项，`storage` 字段为 `invalid`。正常「还没灌数据」的情况 `storage` 为 `blob`，两者的区分就在这里。
 
