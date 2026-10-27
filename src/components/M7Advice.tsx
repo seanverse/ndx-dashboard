@@ -1,6 +1,6 @@
 /** M7 操作建议。F7.1–F7.3 —— 规则引擎输出，非自由文本 */
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { AdviceBlock, ScoreBlock } from '../../shared/types'
 import { ADVICE_RULES } from '../../shared/compute'
 import { Panel } from './primitives'
@@ -24,8 +24,11 @@ export function M7Advice({ advice, score }: { advice: AdviceBlock | null; score:
   // 规则浮层：点击触发出现在结论带下方，点空白处 / Esc / 再点同一按钮均可关闭
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
+  const popRef = useRef<HTMLDivElement>(null)
+  /** 浮层在触发按钮上方还是下方。打开时按真实可用空间算，放不下才翻上去 */
+  const [placement, setPlacement] = useState<'below' | 'above'>('below')
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return
     const onDown = (e: PointerEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
@@ -33,9 +36,32 @@ export function M7Advice({ advice, score }: { advice: AdviceBlock | null; score:
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(false)
     }
+    // 上下都放不下时贴空间大的一侧：浮层 max-h 52vh，可滚动，不会出屏
+    const place = () => {
+      const wrap = wrapRef.current
+      const pop = popRef.current
+      if (!wrap || !pop) return
+      const rect = wrap.getBoundingClientRect()
+      const h = pop.offsetHeight
+      const below = window.innerHeight - rect.bottom
+      const above = rect.top
+      setPlacement(
+        h <= below - 8
+          ? 'below'
+          : h <= above - 8
+            ? 'above'
+            : below >= above
+              ? 'below'
+              : 'above',
+      )
+    }
+    // useLayoutEffect：首帧绘制前量完再定位，避免「先下方闪一下再翻转」
+    place()
+    window.addEventListener('resize', place)
     document.addEventListener('pointerdown', onDown)
     document.addEventListener('keydown', onKey)
     return () => {
+      window.removeEventListener('resize', place)
       document.removeEventListener('pointerdown', onDown)
       document.removeEventListener('keydown', onKey)
     }
@@ -101,9 +127,14 @@ export function M7Advice({ advice, score }: { advice: AdviceBlock | null; score:
         {open ? (
           <div
             id="m7-rule-popover"
+            ref={popRef}
             role="dialog"
             aria-label="五档规则"
-            className="absolute top-full right-0 z-30 mt-2 w-[352px] max-w-full rounded-xl border border-[var(--color-line)] bg-white p-2.5 shadow-[0_14px_36px_rgba(10,37,64,0.16)]"
+            className={
+              placement === 'below'
+                ? 'absolute top-full right-0 z-30 mt-2 w-[352px] max-w-full rounded-xl border border-[var(--color-line)] bg-white p-2.5 shadow-[0_14px_36px_rgba(10,37,64,0.16)]'
+                : 'absolute bottom-full right-0 z-30 mb-2 w-[352px] max-w-full rounded-xl border border-[var(--color-line)] bg-white p-2.5 shadow-[0_14px_36px_rgba(10,37,64,0.16)]'
+            }
           >
             <div className="mb-1 flex items-baseline justify-between gap-2 px-1">
               <span className="text-[11.5px] font-medium">五档规则</span>

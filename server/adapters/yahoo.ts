@@ -45,10 +45,29 @@ function num(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null
 }
 
+interface ChartResult {
+  meta?: Record<string, unknown>
+  timestamp?: number[]
+  indicators?: { quote?: Array<{ open?: (number | null)[] }> }
+}
+
+/**
+ * 会话开盘价：chart API 的 meta 没有 regularMarketOpen（实测 2026-10-27），
+ * 今开只能从分钟 K 数组取——首个非空 open 即开盘首根。数组缺失或全空返回 null。
+ */
+function sessionOpen(result: ChartResult | undefined): number | null {
+  const opens = result?.indicators?.quote?.[0]?.open
+  if (!Array.isArray(opens)) return null
+  for (const v of opens) {
+    if (typeof v === 'number' && Number.isFinite(v)) return v
+  }
+  return null
+}
+
 /** 纯解析，供单测。缺价 / 缺昨收 / 结构不对一律 null，由调用方走备源 */
 export function parseYahooChart(json: unknown): YahooQuote | null {
-  const meta = (json as { chart?: { result?: Array<{ meta?: Record<string, unknown> }> } })
-    ?.chart?.result?.[0]?.meta
+  const result = (json as { chart?: { result?: ChartResult[] } })?.chart?.result?.[0]
+  const meta = result?.meta
   if (!meta) return null
 
   const value = num(meta.regularMarketPrice)
@@ -59,7 +78,7 @@ export function parseYahooChart(json: unknown): YahooQuote | null {
     symbol: typeof meta.symbol === 'string' ? meta.symbol : '',
     value,
     prevClose,
-    open: num(meta.regularMarketOpen),
+    open: sessionOpen(result) ?? num(meta.regularMarketOpen),
     high: num(meta.regularMarketDayHigh),
     low: num(meta.regularMarketDayLow),
     volume: num(meta.regularMarketVolume),

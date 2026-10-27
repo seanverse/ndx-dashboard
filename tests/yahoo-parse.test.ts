@@ -61,6 +61,41 @@ describe('parseYahooChart', () => {
     ).toBeNull()
   })
 
+  it('meta 没有 open 时从分钟 K 数组取首个非空值（今开）', () => {
+    const json = {
+      chart: {
+        result: [
+          {
+            meta: { symbol: '^NDX', regularMarketPrice: 29392, previousClose: 29273 },
+            timestamp: [1, 2, 3],
+            indicators: { quote: [{ open: [null, 29407.38, 29492.08] }] },
+          },
+        ],
+      },
+    }
+    expect(parseYahooChart(json)?.open).toBe(29407.38)
+  })
+
+  it('数组全空或缺失时 open 为 null，不编造', () => {
+    const noArrays = {
+      chart: {
+        result: [{ meta: { symbol: '^NDX', regularMarketPrice: 29392, previousClose: 29273 } }],
+      },
+    }
+    expect(parseYahooChart(noArrays)?.open).toBeNull()
+    const allNull = {
+      chart: {
+        result: [
+          {
+            meta: { symbol: '^NDX', regularMarketPrice: 29392, previousClose: 29273 },
+            indicators: { quote: [{ open: [null, null] }] },
+          },
+        ],
+      },
+    }
+    expect(parseYahooChart(allNull)?.open).toBeNull()
+  })
+
   it('结构损坏（限流 429 的 error 形态、result 为空）返回 null', () => {
     expect(parseYahooChart({ chart: { result: null, error: { code: 'Too Many Requests' } } })).toBeNull()
     expect(parseYahooChart({ chart: { result: [] } })).toBeNull()
