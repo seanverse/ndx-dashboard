@@ -189,7 +189,7 @@ npm run worker:deploy
 
 ```bash
 npm run typecheck        # strict + noUncheckedIndexedAccess
-npm test                 # 98 项：黄金用例 + 日历（含 Globex 分档）+ 腾讯双格式 + 日快照
+npm test                 # 101 项：黄金用例 + 日历（含 Globex 分档）+ 腾讯双格式 + Yahoo 解析 + 日快照
 npm run verify           # 取数核对：把页面每个数字和第二源对一遍（需先 npm run seed）
 ```
 
@@ -244,7 +244,7 @@ CLICK=1 npm run audit -- http://localhost:4173/ 1440   # 点开所有折叠块�
 
 | 指标 | 页面源 | 对照源 |
 | --- | --- | --- |
-| NDX 收/开/高/低/昨收/量 | 新浪 `gb_ndx` | 腾讯 `usNDX` |
+| NDX 收/开/高/低/昨收/量 | Yahoo `^NDX` | 腾讯 `usNDX` |
 | NDX 收盘 | 快照 | 新浪日 K 末根（校验解析层） |
 | WTI / 黄金 | 新浪 `hf_CL` `hf_GC` | 腾讯 `hf_CL` `hf_GC` |
 | 美元指数 | 新浪 `DINIW` | 六货币对自算 |

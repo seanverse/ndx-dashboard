@@ -13,9 +13,23 @@ import { pctChange, round } from '../shared/compute/index.js'
 import { fetchFearGreed, type FgiResult } from './adapters/cnn.js'
 import { fetchSnapshots, type Snapshot } from './adapters/sina.js'
 import { fetchTencentFutures, fetchTencentNdx } from './adapters/tencent.js'
+import { fetchYahooSnapshots, type YahooQuote } from './adapters/yahoo.js'
 
 /** 同 basis 源之间的最大可接受偏差（TECH-001 §1.6） */
 export const SWITCH_TOLERANCE_PCT = 0.3
+
+/** YahooQuote → 统一 Snapshot（time 统一成 ISO 字符串，纯展示用） */
+function toSnapshot(q: YahooQuote): Snapshot {
+  return {
+    value: q.value,
+    prevClose: q.prevClose,
+    open: q.open,
+    high: q.high,
+    low: q.low,
+    volume: q.volume,
+    time: q.time === null ? '' : new Date(q.time * 1000).toISOString(),
+  }
+}
 
 export interface MacroNow {
   value: number
@@ -68,30 +82,23 @@ export async function collectIntraday(options: CollectOptions = {}): Promise<Col
   const failed: string[] = []
   const sources: Record<string, SourceTag> = {}
 
-  // 主源与恐贪并发；备源按需再发，避免每次多打两个请求
-  const [snapRes, fgiRes] = await Promise.allSettled([
-    fetchSnapshots(),
-    options.lean ? Promise.resolve(null) : fetchFearGreed(),
+  // 主源 Yahoo（四标的并发）与恐贪并发；备源按需再发
+  const fgiTask: Promise<FgiResult | null> = options.lean
+    ? Promise.resolve(null)
+    : fetchFearGreed().catch(() => null)
+  const [yahoo, fearGreed] = await Promise.all([
+    fetchYahooSnapshots({ lean: options.lean }),
+    fgiTask,
   ])
-
-  let snap: Awaited<ReturnType<typeof fetchSnapshots>> | null =
-    snapRes.status === 'fulfilled' ? snapRes.value : null
-  if (!snap) {
-    failed.push('sina:snapshot')
-    warnings.push('新浪快照请求失败')
-  }
-
-  let fearGreed: FgiResult | null = fgiRes.status === 'fulfilled' ? fgiRes.value : null
   if (!fearGreed && !options.lean) {
     failed.push('cnn:fearGreed')
     warnings.push('CNN 恐贪请求失败，沿用上版值')
   }
 
-  // NDX：主源缺失时切腾讯。腾讯直给昨收，无需反推。lean 时跳过——
-  // 若新浪整个快照都失败，油/金/DXY 一并缺失，切腾讯 NDX 也救不了宏观面板
-  let ndx = snap?.ndx ?? null
+  // NDX：主源缺失时切腾讯。腾讯直给昨收，无需反推。lean 时跳过（夜里 NDX 不变）
+  let ndx: Snapshot | null = yahoo.ndx ? toSnapshot(yahoo.ndx) : null
   if (ndx) {
-    sources.ndx = 'sina'
+    sources.ndx = 'yahoo'
   } else if (!options.lean) {
     try {
       const t = await fetchTencentNdx()
@@ -114,17 +121,17 @@ export async function collectIntraday(options: CollectOptions = {}): Promise<Col
   }
   if (!ndx) sources.ndx = 'missing'
 
-  // 双源同时成功时不切换，但做偏差记录：偏差过大意味着某源串标的或错位一天
-  if (!options.lean && snap?.ndx && sources.ndx === 'sina') {
+  // 双源交叉校验（非 lean）：偏差过大意味着某源串标的或错位一天。
+  // Yahoo ^NDX 与腾讯 usNDX 同为指数点位，同 basis 可比
+  if (!options.lean && ndx && sources.ndx === 'yahoo') {
     try {
       const t = await fetchTencentNdx()
       if (t) {
-        const d = deviation(snap.ndx.value, t.value)
+        const d = deviation(ndx.value, t.value)
         if (d > SWITCH_TOLERANCE_PCT) {
           warnings.push(
             `NDX 双源偏差 ${d.toFixed(2)}% 超过 ${SWITCH_TOLERANCE_PCT}%，已按主源取值并标记 uncertain`,
           )
-          sources.ndx = 'sina'
         }
       }
     } catch {
@@ -132,11 +139,11 @@ export async function collectIntraday(options: CollectOptions = {}): Promise<Col
     }
   }
 
-  // 油 / 金：新浪缺失时切腾讯外盘
-  let oil = snap?.oil ?? null
-  let gold = snap?.gold ?? null
-  if (oil) sources.oil = 'sina'
-  if (gold) sources.gold = 'sina'
+  // 油 / 金：Yahoo 缺失时切腾讯外盘
+  let oil: Snapshot | null = yahoo.oil ? toSnapshot(yahoo.oil) : null
+  let gold: Snapshot | null = yahoo.gold ? toSnapshot(yahoo.gold) : null
+  if (oil) sources.oil = 'yahoo'
+  if (gold) sources.gold = 'yahoo'
   if (!oil || !gold) {
     try {
       const t = await fetchTencentFutures()
@@ -173,10 +180,27 @@ export async function collectIntraday(options: CollectOptions = {}): Promise<Col
   if (!oil) sources.oil = 'missing'
   if (!gold) sources.gold = 'missing'
 
-  // DXY 无备源：DINIW 空返回时（陷阱 3）只能沿用上版
-  const dxy = snap?.dxy ?? null
-  sources.dxy = dxy ? 'sina' : 'missing'
-  if (!dxy) warnings.push('美元指数快照不可用（DINIW 空返回），沿用上版')
+  // DXY：Yahoo 的 DX-Y.NYB 是 ICE 现货指数，与六货币对自算历史同 basis（偏差 0.003%）。
+  // 缺失时退回新浪 DINIW 快照——DXY 自此第一次有了备源
+  let dxy: Snapshot | null = yahoo.dxy ? toSnapshot(yahoo.dxy) : null
+  if (dxy) {
+    sources.dxy = 'yahoo'
+  } else {
+    try {
+      const s = await fetchSnapshots() // 单请求带四标的，此处只用 dxy
+      if (s.dxy) {
+        dxy = s.dxy
+        sources.dxy = 'sina'
+        warnings.push('美元指数已切换至新浪 DINIW 备源')
+      }
+    } catch {
+      failed.push('sina:dxy')
+    }
+  }
+  if (!dxy) {
+    sources.dxy = 'missing'
+    warnings.push('美元指数快照不可用，沿用上版')
+  }
 
   const ms = options.macroSeries
   const macro = {

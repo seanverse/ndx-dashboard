@@ -7,6 +7,7 @@
 
 /** 单字段来源标记。stale = 本次抓取失败、沿用上版；missing = 从未取到。 */
 export type SourceTag =
+  | 'yahoo'
   | 'sina'
   | 'tencent'
   | 'cboe'

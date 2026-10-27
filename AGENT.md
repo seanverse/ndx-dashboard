@@ -47,7 +47,7 @@ Vercel Cron 0 22 UTC --GET  /api/daily  --> Vercel Function --┴--> Vercel Blob
 | 目录 | 运行位置 | 放什么 |
 | --- | --- | --- |
 | `api/` | **Vercel Functions**（Node 22，`vercel.json` 声明路由与每日 cron） | 4 个 HTTP 入口：`collect`（盘中采集）、`daily`（日更）、`dashboard`（前端数据）、`health`（自检） |
-| `server/` | **Vercel Functions 内部**（由 `api/` import）；本地由 `scripts/` 以 tsx 复用 | `adapters/` 解析新浪、腾讯、CBOE、CNN、蛋卷、外汇各家格式；其余负责日更与盘中编排、美东日历、DXY 自算、日快照、Blob 读写 |
+| `server/` | **Vercel Functions 内部**（由 `api/` import）；本地由 `scripts/` 以 tsx 复用 | `adapters/` 解析 Yahoo（盘中主源）、新浪、腾讯、CBOE、CNN、蛋卷、外汇各家格式；其余负责日更与盘中编排、美东日历、DXY 自算、日快照、Blob 读写 |
 | `shared/` | **打进两侧**：浏览器 bundle + Vercel Function 都包含它 | `types.ts` 定义 API 字段结构，`compute/` 放阈值、RSI、统计、宏观压力、评分、建议。纯函数，不碰 IO |
 | `worker/` | **Cloudflare Worker**（V8 isolate，cron `*/15`） | 定时器，每 15 分钟向 `/api/collect` 发一个 POST，仅此而已 |
 | `src/` | **浏览器**（Vite 打包成静态文件进 `dist/`，由 Vercel 托管） | React 前端。`components/M1–M8` 是八个面板，`primitives.tsx` 是自绘 SVG，`api/client.ts` 管请求与轮询 |
