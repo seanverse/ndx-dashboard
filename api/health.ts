@@ -11,7 +11,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import type { DailyMetrics, LatestSnapshot } from '../shared/types.js'
-import { describeEnv, readJson, storeStatus } from '../server/store.js'
+import { PATHS, describeEnv, probeBlobObject, readJson, storeStatus } from '../server/store.js'
 
 interface Check {
   step: string
@@ -44,6 +44,33 @@ export default async function handler(_req: VercelRequest, res: VercelResponse):
   try {
     const status = storeStatus()
     checks.push({ step: 'store_status', ok: status.mode !== 'invalid', detail: status })
+
+    // 空库时 read_latest 只能是 null，「域名写错」和「还没灌数」看起来完全一样，
+    // 所以这里单独要一次状态码：404 说明基址正确、只是没数据；连不上说明基址写错。
+    if (status.mode === 'blob') {
+      const probe = await probeBlobObject(PATHS.latest)
+      const reading =
+        probe.status === 200
+          ? '对象存在，基址正确'
+          : probe.status === 404
+            ? '基址可达、对象尚不存在（正常：还没灌数）'
+            : probe.status === 403
+              ? '基址可达但被拒绝：库可能是 Private，或域名指向了别的库'
+              : probe.status === null
+                ? '连不上：域名拼错，或该 Blob 库不存在'
+                : `返回 ${probe.status}：检查基址是否指向本项目的 Blob 库`
+      checks.push({
+        step: 'blob_probe',
+        ok: probe.status === 200 || probe.status === 404,
+        detail: { url: probe.url, status: probe.status, reading, ...(probe.error ? { error: probe.error } : {}) },
+      })
+    } else {
+      checks.push({
+        step: 'blob_probe',
+        ok: false,
+        detail: `存储模式为 ${status.mode}，跳过探测：先修好 store_status 的 problems`,
+      })
+    }
   } catch (e) {
     checks.push({ step: 'store_status', ok: false, error: errText(e) })
   }

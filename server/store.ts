@@ -80,13 +80,48 @@ function readEnv(name: string): string | undefined {
   return resolveEnv(name).value ?? undefined
 }
 
-/** Blob 库的公网基址，末尾斜杠去掉；未配置时为空串 */
+/**
+ * Blob 库的公网基址，未配置时为空串。
+ *
+ * 这个变量不在 Vercel 的自动注入清单里（注入的是 STORE_ID / WEBHOOK_KEY / TOKEN），
+ * 必须手工填。手工就有两类常见写错：结尾多一个斜杠，或把对象 URL 连路径一起粘进来
+ * （https://host/data/latest.json）。两种都在这里归一化掉，避免因为一个斜杠变成 404。
+ */
 function blobBase(): string {
-  return (process.env.BLOB_BASE_URL ?? '').trim().replace(/\/+$/, '')
+  return (process.env.BLOB_BASE_URL ?? '')
+    .trim()
+    .replace(/\/+$/, '')
+    .replace(/\/data(?:\/.*)?$/i, '')
+    .replace(/\/+$/, '')
 }
 
 function blobUrl(rel: string): string {
   return `${blobBase()}/${BLOB_ROOT}/${rel}`
+}
+
+/** 探测某个对象在 Blob 上的真实可达性，用于区分「基址写错」与「还没灌数」 */
+export interface BlobProbe {
+  url: string
+  /** HTTP 状态码；连不上时为 null */
+  status: number | null
+  /** status 为 null 时的原因 */
+  error?: string
+}
+
+/**
+ * 直接发一次 GET 换取状态码，不做任何降级。
+ *
+ * 空库时 readAt 只能返回 null，无法区分「域名写错」和「对象还没写入」——
+ * 这两种情况在页面上完全一样，但处理方式相反。所以诊断端点要的是状态码本身。
+ */
+export async function probeBlobObject(rel: string): Promise<BlobProbe> {
+  const url = blobUrl(rel)
+  try {
+    const res = await fetch(url, { cache: 'no-store' })
+    return { url, status: res.status }
+  } catch (e) {
+    return { url, status: null, error: e instanceof Error ? e.message : String(e) }
+  }
 }
 
 export type StoreMode = 'blob' | 'local' | 'invalid'

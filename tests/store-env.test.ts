@@ -110,4 +110,22 @@ describe('describeEnv', () => {
     expect(JSON.stringify(report)).not.toContain('should_not_leak')
     expect(report.blobRelatedNames).toContain('NDX_BLOB_READ_WRITE_TOKEN')
   })
+
+  // 手工填的变量最容易在两个地方写错：结尾斜杠，或把对象 URL 连路径一起粘进来。
+  // 两者都只影响拼接结果，不该变成「没有数据」这种没有指向性的现象。
+  it('基址结尾带斜杠时归一化', () => {
+    process.env.BLOB_BASE_URL = `${BASE}//`
+    expect(describeEnv().baseUrl).toBe(BASE)
+  })
+
+  it('误把对象 URL 粘成基址时剥掉 /data 之后的部分', () => {
+    process.env.BLOB_BASE_URL = `${BASE}/data/latest.json`
+    expect(describeEnv().baseUrl).toBe(BASE)
+  })
+
+  it('剥离后不影响判定：仍然算配置完整', () => {
+    process.env.BLOB_BASE_URL = `${BASE}/data/`
+    process.env.NDX_BLOB_STORE_ID = 'store_ndx'
+    expect(storeStatus().mode).toBe('blob')
+  })
 })
