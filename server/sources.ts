@@ -70,9 +70,10 @@ export interface CollectOptions {
     dxy: readonly { date: string; close: number }[]
   } | null
   /**
-   * extended 节奏（Globex 开市但股市闭市）：NDX 与恐贪此时段不会变，
+   * lean（extended 节奏且上一版已有行情与恐贪）：NDX 与恐贪此时段不会变，
    * 跳过 CNN 请求与腾讯 NDX 交叉校验 / 备源切换，上游请求 3 → 1。
    * 新浪快照是单请求带 4 标的，油 / 金 / DXY 仍照常取到。
+   * 是否 lean 由调用方（collect）判断：冷启动（上一版缺行情或恐贪）必须 false。
    */
   lean?: boolean
 }

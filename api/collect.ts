@@ -88,10 +88,13 @@ async function collect(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // 5 抓取。extended 时 lean：夜里 NDX 与恐贪不变，少打 CNN 与腾讯两个上游
+  // 5 抓取。extended 时 lean：夜里 NDX 与恐贪不变，少打 CNN 与腾讯两个上游。
+  // 前提是上一版已有这两样——新库 / 首日冷启动不能 lean，否则缺口永远等不到 session 档才补，
+  // 盘前 M1 会一直显示「行情不可用」而不是上一交易日收盘
+  const lean = cadence === 'extended' && Boolean(prev?.quote && prev?.fearGreed)
   const collected = await collectIntraday({
     macroSeries: metrics?.macroSeries ?? null,
-    lean: cadence === 'extended',
+    lean,
   })
 
   // 6 组装 LatestSnapshot（只放截面原料）
@@ -101,7 +104,7 @@ async function collect(req: VercelRequest, res: VercelResponse) {
 
   const sources: Record<string, SourceTag> = { ...collected.sources }
   if (collected.fearGreed) sources.fearGreed = 'cnn'
-  else if (cadence === 'extended') sources.fearGreed = 'stale'
+  else if (lean) sources.fearGreed = 'stale'
   if (metrics) {
     sources.vxn = 'cboe'
     sources.pe = 'danjuan'

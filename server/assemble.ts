@@ -212,12 +212,16 @@ export function assembleDashboard(
   // ---- M7 操作建议 ----
   const advice = score ? buildAdvice(score.riskLevel, rsi?.slope ?? null) : null
 
-  const tradeDate = metrics?.tradeDate ?? etTradeDate(now)
+  // 行情所属交易日取 collect 写入时记的 quoteSessionDate（盘前属上一会话），
+  // 而不是 metrics 的日更日期——当日日更要到收盘后才跑，用它会让整个盘中
+  // 都把刚抓的现价判成「非当天」，新鲜度错报成「距昨日收盘 1000+ 分钟」。
+  // 兜底链兼容旧 payload / 缺行情的场景。
+  const tradeDate = latest.meta.tradeDate || metrics?.tradeDate || etTradeDate(now)
   const phase = tradingPhase(now)
 
   /**
    * 数据新鲜度必须分两种情形算，否则会把周末的收盘价标成「延迟 15 分钟」：
-   * - 盘中且在当天：上游快照固定约 15 分钟延迟；
+   * - 盘中且行情属当天：上游快照固定约 15 分钟延迟；
    * - 其余时段（盘前/盘后/周末/假日）：从该交易日收盘算起，如实给出分钟数。
    */
   const isLiveBar = phase === 'open' && tradeDate === etParts(now).iso
