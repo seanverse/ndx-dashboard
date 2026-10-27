@@ -127,7 +127,12 @@ curl -X POST "$S/api/collect" -H "Authorization: Bearer $K"
 
 ① 返回 `ok:true` 且 `tradeDate` 为最近交易日即就绪；当天已跑过则返回 `skipped:'already-done'`，同样算就绪。
 
-② **只在美东 09:30–16:20 生效**（半日市到 13:20），盘前与休市日返回 `skipped:'off-hours'` 且不写数据 —— 这是防止空数据覆盖好缓存，不是故障。在休市日首次部署时，行情面板要等到下一个开盘。
+② **采集分两档**（防止空数据覆盖好缓存，也控制 Blob 写额度）：
+- 股市常规时段（美东 09:30–16:20，半日市到 13:20）：每 15 分钟写一次
+- 其余 Globex 开市时段（盘前 / 盘后 / 深夜 / 假日——油、金、DXY 近 23 小时都在交易）：每小时一次
+- 周五 17:00–周日 18:00 与每日 17:00–18:00 维护时段：返回 `skipped:'off-hours'` 且不写数据
+
+在周末首次部署时，行情面板要等到周日 18:00 ET 之后才有数据。
 
 ### 5.3 CF Worker
 
@@ -176,15 +181,15 @@ npm run worker:deploy
 - [ ] 日更后 `dxyCheck.ok === true`，且 `dxyCheck.sameSession === true`（收盘后 3 小时内跑，容差 0.05%；跨时点手动触发时容差放宽到 0.5%，只做量级校验）
 - [ ] 等一个 15 分钟周期，`latest.json` 的 `generatedAt` 推进
 - [ ] `npm run worker:tail` 里出现 `{"ok":true,"status":200,...}`（`status:401` 是两侧 `CRON_SECRET` 不一致）
-- [ ] 非交易时段触发 `/api/collect` 返回 `skipped:'off-hours'`，不写 Blob
-- [ ] 8 分钟内重复触发返回 `skipped:'too-soon'`（幂等窗口）
-- [ ] Vercel Blob 用量页：Advanced Ops 增速 ≈ 每天 21 次
+- [ ] 周末或每日维护时段（17:00–18:00 ET）触发 `/api/collect` 返回 `skipped:'off-hours'`，不写 Blob
+- [ ] 常规时段 8 分钟内重复触发返回 `skipped:'too-soon'`；深夜（extended）触发正常写入，且 50 分钟内重复触发被挡
+- [ ] Vercel Blob 用量页：Advanced Ops 增速 ≈ 每天 32 次（常规 27 + extended 摊平）
 
 ## 6. 验证
 
 ```bash
 npm run typecheck        # strict + noUncheckedIndexedAccess
-npm test                 # 67 项：黄金用例 + 日历 + 腾讯双格式 + 日快照
+npm test                 # 98 项：黄金用例 + 日历（含 Globex 分档）+ 腾讯双格式 + 日快照
 npm run verify           # 取数核对：把页面每个数字和第二源对一遍（需先 npm run seed）
 ```
 
@@ -254,7 +259,7 @@ CLICK=1 npm run audit -- http://localhost:4173/ 1440   # 点开所有折叠块�
 
 | 项 | 免费额度 | 本项目月耗 | 占比 |
 | --- | --- | --- | --- |
-| Blob Advanced Ops | 2,000 | ≈ 638 | **32%（唯一吃紧项）** |
+| Blob Advanced Ops | 2,000 | ≈ 970 | **48%（唯一吃紧项）** |
 | Function 调用 | 100 万 | ≈ 2,910 | 0.3% |
 | Active CPU | 4 CPU-hr | ≈ 339 s | 2.4% |
 | CF Worker CPU | 10 ms/次 | < 3 ms/次 | 30% |

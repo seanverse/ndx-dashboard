@@ -21,6 +21,8 @@ export default async function handler(_req: VercelRequest, res: VercelResponse):
   res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600')
 
   try {
+    //拉数据，然后在assembleDashboard内存里算派生值。
+    // 避免写入侧存计算结果，只有一份计算实现（shared/compute），metrics 更新后下次请求立即反映，不会出现两份分数打架。
     const [latest, metrics] = await Promise.all([
       readJson<LatestSnapshot>('latest'),
       readJson<DailyMetrics>('metrics'),

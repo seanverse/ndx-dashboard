@@ -3,7 +3,9 @@
  *
  * 七步，每步都有明确理由：
  *   1 鉴权        防止端点被外部刷，触发上游限流
- *   2 时段闸门    非交易时段的空数据会覆盖好缓存
+ *   2 节奏闸门    session（常规时段）15 分钟粒度；extended（Globex 开市但股市闭市，
+ *                 即盘前/盘后/深夜/假日）每小时一次；周末与维护时段不采。
+ *                 非交易时段的空数据会覆盖好缓存
  *   3 幂等        手动补跑 / 部署窗口双触发时挡住，不消耗 Blob 写
  *   4 日更兜底    Vercel Cron 不重试，metrics 落后时在这里顺带补跑
  *   5 抓取        单源失败不抛，沿用上版并标 stale
@@ -12,17 +14,24 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import type { CollectCadence } from '../server/calendar.js'
 import type { DailyMetrics, LatestSnapshot, Meta, SourceTag } from '../shared/types.js'
 import { assembleDashboard } from '../server/assemble.js'
 import { checkBearer, unauthorized } from '../server/auth.js'
-import { etTradeDate, isTradingWindow, prevTradeDate, tradingPhase } from '../server/calendar.js'
+import { collectCadence, expectedDailyDate, quoteSessionDate, tradingPhase } from '../server/calendar.js'
 import { buildDaily } from '../server/series.js'
 import { tryWriteDailySnapshot } from '../server/snapshot.js'
 import { collectIntraday } from '../server/sources.js'
 import { readJson, writeJson } from '../server/store.js'
 
-/** 两次写入的最小间隔。CF Cron 是 15 分钟，8 分钟可容一次重试而不会双写 */
-const MIN_INTERVAL_MS = 8 * 60_000
+/**
+ * 各节奏的最小写入间隔。session 8 分钟可容一次重试不双写；
+ * extended 50 分钟让 15 分钟 cron 的四个 tick 每小时恰好只放行整点那一个。
+ */
+const MIN_INTERVAL_MS: Record<CollectCadence, number> = {
+  session: 8 * 60_000,
+  extended: 50 * 60_000,
+}
 
 async function collect(req: VercelRequest, res: VercelResponse) {
   const t0 = Date.now()
@@ -32,26 +41,31 @@ async function collect(req: VercelRequest, res: VercelResponse) {
 
   const now = new Date()
 
-  // 2 时段闸门：用 Intl 按 America/New_York 判断，规避 DST
-  if (!isTradingWindow(now)) {
+  // 2 节奏闸门：用 Intl 按 America/New_York 判断，规避 DST
+  const cadence = collectCadence(now)
+  if (!cadence) {
     return res.status(200).json({ skipped: 'off-hours', phase: tradingPhase(now) })
   }
 
-  const prev = await readJson<LatestSnapshot>('latest')
+  // 上一版与日更产物并行读（走固定 URL，不计 Blob 操作次数），省一个串行往返
+  const [prev, metricsRead] = await Promise.all([
+    readJson<LatestSnapshot>('latest'),
+    readJson<DailyMetrics>('metrics'),
+  ])
+  // 日更兜底命中时会整体替换，故用 let
+  let metrics = metricsRead
 
   // 3 幂等
   if (prev) {
     const age = now.getTime() - Date.parse(prev.meta.generatedAt)
-    if (Number.isFinite(age) && age < MIN_INTERVAL_MS) {
-      return res.status(200).json({ skipped: 'too-soon', ageSeconds: Math.round(age / 1000) })
+    if (Number.isFinite(age) && age < MIN_INTERVAL_MS[cadence]) {
+      return res.status(200).json({ skipped: 'too-soon', cadence, ageSeconds: Math.round(age / 1000) })
     }
   }
 
   // 4 日更兜底
-  let metrics = await readJson<DailyMetrics>('metrics')
   const phase = tradingPhase(now)
-  const today = etTradeDate(now)
-  const expectedTradeDate = phase === 'open' || phase === 'pre' ? prevTradeDate(today) : today
+  const expectedTradeDate = expectedDailyDate(now)
   const dailyBehind = !metrics || metrics.tradeDate < expectedTradeDate
   let dailyRetried = false
 
@@ -72,8 +86,11 @@ async function collect(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // 5 抓取
-  const collected = await collectIntraday({ macroSeries: metrics?.macroSeries ?? null })
+  // 5 抓取。extended 时 lean：夜里 NDX 与恐贪不变，少打 CNN 与腾讯两个上游
+  const collected = await collectIntraday({
+    macroSeries: metrics?.macroSeries ?? null,
+    lean: cadence === 'extended',
+  })
 
   // 6 组装 LatestSnapshot（只放截面原料）
   const warnings = [...collected.warnings]
@@ -82,6 +99,7 @@ async function collect(req: VercelRequest, res: VercelResponse) {
 
   const sources: Record<string, SourceTag> = { ...collected.sources }
   if (collected.fearGreed) sources.fearGreed = 'cnn'
+  else if (cadence === 'extended') sources.fearGreed = 'stale'
   if (metrics) {
     sources.vxn = 'cboe'
     sources.pe = 'danjuan'
@@ -104,7 +122,7 @@ async function collect(req: VercelRequest, res: VercelResponse) {
   const stale = ndx === null
   const meta: Meta = {
     symbol: 'NDX',
-    tradeDate: today,
+    tradeDate: quoteSessionDate(now),
     generatedAt: now.toISOString(),
     delayMinutes: 15,
     quoteAt: now.toISOString(),

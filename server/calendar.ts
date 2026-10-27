@@ -130,6 +130,34 @@ export function isTradingWindow(at: Date = new Date()): boolean {
   return minutes >= 9 * 60 + 30 && minutes <= closeMinute
 }
 
+/**
+ * Globex（CME 期货与外汇）开市判定：周日 18:00 ET 开、周五 17:00 ET 收，
+ * 每日 17:00–18:00 维护停盘。工作日不查假日 —— 假日当天 CL / GC / DXY 大多仍在交易，
+ * 按 extended 节奏照采（若严格按 CME 假日历歇市，表的维护成本远大于收益）。
+ */
+export function isGlobexOpen(at: Date = new Date()): boolean {
+  const p = etParts(at)
+  const m = p.hour * 60 + p.minute
+  if (p.dow === 6) return false
+  if (p.dow === 0) return m >= 18 * 60
+  if (p.dow === 5) return m < 17 * 60
+  return m < 17 * 60 || m >= 18 * 60
+}
+
+/**
+ * 采集节奏（TECH-001 §2.3）：
+ *   session  股市常规时段，15 分钟粒度（CF cron 原样生效）
+ *   extended Globex 开市但股市闭市（盘前 / 盘后 / 深夜 / 假日），降为每小时一次
+ *   null     周末与每日 17:00–18:00 维护时段，不采集
+ */
+export type CollectCadence = 'session' | 'extended'
+
+export function collectCadence(at: Date = new Date()): CollectCadence | null {
+  if (isTradingWindow(at)) return 'session'
+  if (isGlobexOpen(at)) return 'extended'
+  return null
+}
+
 export type Phase = 'pre' | 'open' | 'post' | 'closed'
 
 /**
@@ -175,6 +203,34 @@ export function etTradeDate(at: Date = new Date()): string {
     iso = shiftIso(iso, -1)
   }
   return iso
+}
+
+/** 当天美东零点起的分钟数 */
+function minutesOfDay(at: Date): number {
+  const p = etParts(at)
+  return p.hour * 60 + p.minute
+}
+
+/**
+ * 最新（或正在进行）会话的交易日，collect 写 latest.json 的 meta.tradeDate 用。
+ * 09:30 开盘前属上一会话 —— 深夜采到的仍是昨日收盘价，若挂上「今天」，
+ * 新鲜度会出现「现在 − 一个还没发生的收盘时刻」的负数。
+ */
+export function quoteSessionDate(at: Date = new Date()): string {
+  const iso = etParts(at).iso
+  if (!isTradingDay(iso)) return etTradeDate(at)
+  return minutesOfDay(at) >= 9 * 60 + 30 ? iso : prevTradeDate(iso)
+}
+
+/**
+ * metrics 应有的最新交易日，collect 的日更兜底据此判断是否落后。
+ * 收盘后不立即切到当天：Vercel Cron 精度 ±59 min，拖到 19:30 ET 之后才认为「应该已有当日」，
+ * 避免尾盘的 extended 触发抢先跑日更（收盘价 / VXN 可能未定稿）。
+ */
+export function expectedDailyDate(at: Date = new Date()): string {
+  const iso = etParts(at).iso
+  if (!isTradingDay(iso)) return etTradeDate(at)
+  return minutesOfDay(at) >= 19 * 60 + 30 ? iso : prevTradeDate(iso)
 }
 
 /** 上一个交易日（不含当天） */

@@ -55,6 +55,12 @@ export interface CollectOptions {
     gold: readonly { date: string; close: number }[]
     dxy: readonly { date: string; close: number }[]
   } | null
+  /**
+   * extended 节奏（Globex 开市但股市闭市）：NDX 与恐贪此时段不会变，
+   * 跳过 CNN 请求与腾讯 NDX 交叉校验 / 备源切换，上游请求 3 → 1。
+   * 新浪快照是单请求带 4 标的，油 / 金 / DXY 仍照常取到。
+   */
+  lean?: boolean
 }
 
 export async function collectIntraday(options: CollectOptions = {}): Promise<CollectResult> {
@@ -63,7 +69,10 @@ export async function collectIntraday(options: CollectOptions = {}): Promise<Col
   const sources: Record<string, SourceTag> = {}
 
   // 主源与恐贪并发；备源按需再发，避免每次多打两个请求
-  const [snapRes, fgiRes] = await Promise.allSettled([fetchSnapshots(), fetchFearGreed()])
+  const [snapRes, fgiRes] = await Promise.allSettled([
+    fetchSnapshots(),
+    options.lean ? Promise.resolve(null) : fetchFearGreed(),
+  ])
 
   let snap: Awaited<ReturnType<typeof fetchSnapshots>> | null =
     snapRes.status === 'fulfilled' ? snapRes.value : null
@@ -73,16 +82,17 @@ export async function collectIntraday(options: CollectOptions = {}): Promise<Col
   }
 
   let fearGreed: FgiResult | null = fgiRes.status === 'fulfilled' ? fgiRes.value : null
-  if (!fearGreed) {
+  if (!fearGreed && !options.lean) {
     failed.push('cnn:fearGreed')
     warnings.push('CNN 恐贪请求失败，沿用上版值')
   }
 
-  // NDX：主源缺失时切腾讯。腾讯直给昨收，无需反推
+  // NDX：主源缺失时切腾讯。腾讯直给昨收，无需反推。lean 时跳过——
+  // 若新浪整个快照都失败，油/金/DXY 一并缺失，切腾讯 NDX 也救不了宏观面板
   let ndx = snap?.ndx ?? null
   if (ndx) {
     sources.ndx = 'sina'
-  } else {
+  } else if (!options.lean) {
     try {
       const t = await fetchTencentNdx()
       if (t) {
@@ -101,11 +111,11 @@ export async function collectIntraday(options: CollectOptions = {}): Promise<Col
     } catch {
       failed.push('tencent:ndx')
     }
-    if (!ndx) sources.ndx = 'missing'
   }
+  if (!ndx) sources.ndx = 'missing'
 
   // 双源同时成功时不切换，但做偏差记录：偏差过大意味着某源串标的或错位一天
-  if (snap?.ndx && sources.ndx === 'sina') {
+  if (!options.lean && snap?.ndx && sources.ndx === 'sina') {
     try {
       const t = await fetchTencentNdx()
       if (t) {

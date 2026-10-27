@@ -36,7 +36,7 @@ Vercel Cron 0 22 UTC --GET  /api/daily  --> Vercel Function --┴--> Vercel Blob
 浏览器 --GET /api/dashboard--> 合并 latest.json + metrics.json，现算全部派生值
 ```
 
-- `latest.json`：盘中截面原料（行情 / 恐贪 / 宏观现值），每 15 分钟覆盖。
+- `latest.json`：盘中截面原料（行情 / 恐贪 / 宏观现值）。常规时段每 15 分钟覆盖，其余 Globex 开市时段（盘前/盘后/深夜/假日）每小时一次，周末与每日 17:00–18:00 维护时段不写。
 - `metrics.json`：日更产物（RSI / HV20 / VXN / PE / DXY 校验 / 宏观序列），每天覆盖。
 - `data/daily/YYYY-MM-DD.json`：日快照，写一次不改，是唯一跨日历史。
 
@@ -44,17 +44,34 @@ Vercel Cron 0 22 UTC --GET  /api/daily  --> Vercel Function --┴--> Vercel Blob
 
 ## 目录职责
 
-| 路径 | 职责 |
-| --- | --- |
-| `shared/types.ts` | API 契约，唯一真源 |
-| `shared/compute/` | 纯计算，无 IO。阈值在 `bands.ts`，前端后端共用同一份 |
-| `server/adapters/` | 各上游字段序差异只在这里消化 |
-| `server/series.ts` / `sources.ts` | 日更 / 盘中采集 |
-| `server/assemble.ts` | 合并两份 Blob → `DashboardResponse` |
-| `server/store.ts` | Blob / 本地 `.data/` 三态存储（blob / local / invalid） |
-| `api/*.ts` | Vercel Functions：collect / daily / dashboard / health |
-| `worker/src/index.ts` | 只发一个 POST，不抓数不算分 |
-| `src/components/M*.tsx` | 八面板，自绘 SVG，无第三方图表库 |
+| 目录 | 运行位置 | 放什么 |
+| --- | --- | --- |
+| `api/` | **Vercel Functions**（Node 22，`vercel.json` 声明路由与每日 cron） | 4 个 HTTP 入口：`collect`（盘中采集）、`daily`（日更）、`dashboard`（前端数据）、`health`（自检） |
+| `server/` | **Vercel Functions 内部**（由 `api/` import）；本地由 `scripts/` 以 tsx 复用 | `adapters/` 解析新浪、腾讯、CBOE、CNN、蛋卷、外汇各家格式；其余负责日更与盘中编排、美东日历、DXY 自算、日快照、Blob 读写 |
+| `shared/` | **打进两侧**：浏览器 bundle + Vercel Function 都包含它 | `types.ts` 定义 API 字段结构，`compute/` 放阈值、RSI、统计、宏观压力、评分、建议。纯函数，不碰 IO |
+| `worker/` | **Cloudflare Worker**（V8 isolate，cron `*/15`） | 定时器，每 15 分钟向 `/api/collect` 发一个 POST，仅此而已 |
+| `src/` | **浏览器**（Vite 打包成静态文件进 `dist/`，由 Vercel 托管） | React 前端。`components/M1–M8` 是八个面板，`primitives.tsx` 是自绘 SVG，`api/client.ts` 管请求与轮询 |
+| `scripts/` | **本地 Node**（tsx 直跑 / CDP） | `seed` 灌本地数据、`serve` 起本地全栈、`verify` 交叉核对数字、`audit` 量布局溢出 |
+| `tests/` | **本地 Node**（vitest） | 指标黄金用例、日历、上游解析、存储配置、导入路径、实连测试 |
+| `../docs/` | 不运行 | PRD-001 业务口径与指标规范，TECH-001 数据源、调度与部署 |
+
+## 写码规则（按运行时）
+
+- **`api/` + `server/`（Vercel Function，Node 22）**：可用 `node:` 模块（`fs`、`crypto` 已在用）；相对导入必须带 `.js`（见硬性规则 1）；每个文件默认导出 `handler`。
+- **`worker/`（CF Worker）**：**没有 Node API**，只能用 Web API（`fetch` / `Response` / `AbortSignal` / `console`）；配置从 `env` 参数读（`[vars]` 写 `wrangler.toml`，密钥用 `wrangler secret put`）；CPU 上限 10 ms，所以只做转发，别加逻辑；类型引用 `@cloudflare/workers-types`。
+- **`src/`（浏览器）**：只能用浏览器 API；import **不带** `.js`（Vite 负责解析打包）；需要计算时从 `shared/compute` 引纯函数。
+- **`shared/`**：不许 `import node:*`、不许 `fetch` —— 它会进浏览器 bundle，混入服务端依赖即破坏构建。
+
+## 部署
+
+两条独立链路，部署方式不同：
+
+| 侧 | 覆盖代码 | 怎么部署 |
+| --- | --- | --- |
+| Vercel | `api/` `server/` `shared/` `src/` | `git push` 即自动部署。`vercel.json` 声明构建命令（`npm run build`）、产物目录（`dist`）与每日 cron（`GET /api/daily`，22:00 UTC） |
+| Cloudflare | `worker/` | **不随 git push**。手动：`cd worker && npx wrangler deploy`。`ORIGIN` 写在 `wrangler.toml`，`CRON_SECRET` 用 `npx wrangler secret put CRON_SECRET`（与 Vercel 同值） |
+
+首次部署顺序不可反：建 Blob → 连接项目 + 手填 `BLOB_BASE_URL` 和 `CRON_SECRET` → deploy → 手动 curl `/api/daily` 与 `/api/collect` 灌首份数据。详细步骤与 Go/No-Go 检查见 README §5，出问题先 `GET /api/health`。
 
 ## 硬性规则
 
