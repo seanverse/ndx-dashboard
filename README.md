@@ -141,8 +141,11 @@ npx wrangler tail                                  # 等一个 15 分钟周期�
 
 打开站点，顶部评分条出现健康分即通。
 
+出问题时先看 `GET /api/health`：它把运行时、存储状态、Blob 相关环境变量的实际名字、两个对象的读取结果分步跑一遍，返回哪一步失败、缺什么。不返回任何凭证值。
+
 ### Go/No-Go 检查（部署后逐条打勾）
 
+- [ ] `GET /api/health` 的 `ok` 为 `true`，且 `store_status.mode` 为 `blob`
 - [ ] `GET /api/dashboard` 返回 200，`meta.sources` 里 ndx/oil/gold/dxy/fearGreed 均非 `missing`
 - [ ] `meta.warnings` 出现「恐贪底层为 S&P 500」提示（口径已知偏差，不是故障）
 - [ ] 日更后 `dxyCheck.ok === true`，且 `dxyCheck.sameSession === true`（收盘后 3 小时内跑，容差 0.05%；跨时点手动触发时容差放宽到 0.5%，只做量级校验）

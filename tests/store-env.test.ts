@@ -8,7 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { storeStatus } from '../server/store'
+import { describeEnv, storeStatus } from '../server/store'
 
 const KEYS = [
   'BLOB_BASE_URL',
@@ -19,6 +19,7 @@ const KEYS = [
   'NDX_BLOB_READ_WRITE_TOKEN',
   'NDX_BLOB_STORE_ID',
   'NDX_BLOB_WEBHOOK_PUBLIC_KEY',
+  'OLD_BLOB_READ_WRITE_TOKEN',
 ] as const
 
 const BASE = 'https://demo1234.public.blob.vercel-storage.com'
@@ -86,11 +87,27 @@ describe('storeStatus', () => {
     expect(storeStatus().mode).toBe('blob')
   })
 
-  it('多个前缀同时命中时报错，不猜', () => {
+  it('多个前缀同时命中时判定为配置错误，而不是抛错崩掉请求', () => {
     process.env.BLOB_BASE_URL = BASE
     process.env.NDX_BLOB_READ_WRITE_TOKEN = 'a'
     process.env.OLD_BLOB_READ_WRITE_TOKEN = 'b'
-    expect(() => storeStatus()).toThrow(/多个前缀/)
+    const status = storeStatus()
+    expect(status.mode).toBe('invalid')
+    expect(status.problems.join()).toContain('多个前缀版本')
+    expect(status.problems.join()).toContain('NDX_BLOB_READ_WRITE_TOKEN')
     delete process.env.OLD_BLOB_READ_WRITE_TOKEN
+  })
+})
+
+describe('describeEnv', () => {
+  it('只回显变量名与基址，不回显凭证值', () => {
+    process.env.BLOB_BASE_URL = BASE
+    process.env.NDX_BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_should_not_leak'
+    const report = describeEnv()
+
+    expect(report.tokenVar).toBe('NDX_BLOB_READ_WRITE_TOKEN')
+    expect(report.baseUrl).toBe(BASE)
+    expect(JSON.stringify(report)).not.toContain('should_not_leak')
+    expect(report.blobRelatedNames).toContain('NDX_BLOB_READ_WRITE_TOKEN')
   })
 })

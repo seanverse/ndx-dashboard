@@ -48,18 +48,36 @@ export interface WriteOptions {
  *
  * 多个前缀同时命中时直接抛错，不猜：猜错 store 会把数据写进另一个库。
  */
-function readEnv(name: string): string | undefined {
+interface EnvHit {
+  /** 实际命中的变量名，标准名或带前缀的版本 */
+  key: string | null
+  value: string | null
+  /** 多个前缀同时命中的变量名；非空时表示无法确定用哪个 */
+  ambiguous: string[]
+}
+
+/**
+ * 解析环境变量：标准名优先，其次按「唯一后缀」匹配带前缀的版本。
+ *
+ * 歧义不抛错，而是作为结果返回：抛错会让整个请求 500，而歧义本质是配置问题，
+ * 应该以「缺什么/冲突什么」的形式出现在诊断信息里，让人看到而不是让进程崩掉。
+ */
+function resolveEnv(name: string): EnvHit {
   const exact = process.env[name]
-  if (exact) return exact
+  if (exact) return { key: name, value: exact, ambiguous: [] }
 
   const matches = Object.keys(process.env).filter(
     (key) => key.endsWith(`_${name}`) && Boolean(process.env[key]),
   )
-  if (matches.length > 1) {
-    throw new Error(`环境变量存在多个前缀版本，无法确定使用哪一个：${matches.join(' / ')}`)
-  }
+  if (matches.length > 1) return { key: null, value: null, ambiguous: matches }
+
   const [only] = matches
-  return only === undefined ? undefined : process.env[only]
+  if (only === undefined) return { key: null, value: null, ambiguous: [] }
+  return { key: only, value: process.env[only] ?? null, ambiguous: [] }
+}
+
+function readEnv(name: string): string | undefined {
+  return resolveEnv(name).value ?? undefined
 }
 
 /** Blob 库的公网基址，末尾斜杠去掉；未配置时为空串 */
@@ -89,11 +107,19 @@ export interface StoreStatus {
  * 都表现为未就绪，但只有前者需要人去改配置，混在一起会白查很久。
  */
 export function storeStatus(): StoreStatus {
+  const tokenHit = resolveEnv('BLOB_READ_WRITE_TOKEN')
+  const storeHit = resolveEnv('BLOB_STORE_ID')
   const base = blobBase()
-  const token = readEnv('BLOB_READ_WRITE_TOKEN')
-  const storeId = readEnv('BLOB_STORE_ID')
   const onVercel = Boolean(process.env.VERCEL)
-  const touched = Boolean(base || token || storeId)
+  const touched = Boolean(base || tokenHit.value || storeHit.value || tokenHit.ambiguous.length || storeHit.ambiguous.length)
+
+  const ambiguity = [
+    ...tokenHit.ambiguous.map((name) => `BLOB_READ_WRITE_TOKEN 有多个前缀版本：${name}`),
+    ...storeHit.ambiguous.map((name) => `BLOB_STORE_ID 有多个前缀版本：${name}`),
+  ]
+  if (ambiguity.length > 0) {
+    return { mode: 'invalid', problems: ambiguity.map((p) => `${p}，无法确定使用哪一个`) }
+  }
 
   if (!touched && !onVercel) return { mode: 'local', problems: [] }
 
@@ -101,12 +127,40 @@ export function storeStatus(): StoreStatus {
   if (!base) {
     problems.push('缺少 BLOB_BASE_URL（Blob 库的公网域名，形如 https://<store-id>.public.blob.vercel-storage.com）')
   }
-  if (!token && !storeId) {
+  if (!tokenHit.value && !storeHit.value) {
     problems.push('缺少 Blob 凭证 BLOB_READ_WRITE_TOKEN 或 BLOB_STORE_ID（把 Blob 库连接到项目后由 Vercel 注入）')
   }
   return problems.length > 0
     ? { mode: 'invalid', problems }
     : { mode: 'blob', problems: [] }
+}
+
+export interface EnvReport {
+  /** 公网基址本身不是秘密，直接回显便于核对拼写 */
+  baseUrl: string | null
+  /** 只回显命中的变量名与歧义情况，不回显任何凭证的值 */
+  tokenVar: string | null
+  tokenAmbiguous: string[]
+  storeIdVar: string | null
+  storeIdAmbiguous: string[]
+  /** 所有名字里带 BLOB 的变量名，便于发现前缀写错或漏填 */
+  blobRelatedNames: string[]
+}
+
+/** 诊断用：报告存储相关环境变量的实际情况，不含任何凭证值 */
+export function describeEnv(): EnvReport {
+  const tokenHit = resolveEnv('BLOB_READ_WRITE_TOKEN')
+  const storeHit = resolveEnv('BLOB_STORE_ID')
+  return {
+    baseUrl: blobBase() || null,
+    tokenVar: tokenHit.key,
+    tokenAmbiguous: tokenHit.ambiguous,
+    storeIdVar: storeHit.key,
+    storeIdAmbiguous: storeHit.ambiguous,
+    blobRelatedNames: Object.keys(process.env)
+      .filter((key) => key.includes('BLOB'))
+      .sort(),
+  }
 }
 
 function localPath(rel: string): string {

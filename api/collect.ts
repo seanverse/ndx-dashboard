@@ -24,7 +24,7 @@ import { readJson, writeJson } from '../server/store'
 /** 两次写入的最小间隔。CF Cron 是 15 分钟，8 分钟可容一次重试而不会双写 */
 const MIN_INTERVAL_MS = 8 * 60_000
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+async function collect(req: VercelRequest, res: VercelResponse) {
   const t0 = Date.now()
 
   if (req.method !== 'POST') return res.status(405).json({ error: 'method_not_allowed' })
@@ -160,4 +160,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     failed: collected.failed,
     ms: Date.now() - t0,
   })
+}
+
+/**
+ * 未捕获异常统一转成可读的 500。
+ * 之前写盘失败（例如 Blob 未配置）会直接冒到平台层，只回一句通用错误，
+ * 前端拿不到任何线索，只能看到「接口返回 500」。
+ */
+export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
+  try {
+    await collect(req, res)
+  } catch (e) {
+    const message = e instanceof Error ? `${e.name}: ${e.message}` : String(e)
+    console.error('[collect] failed', e)
+    if (res.headersSent) return
+    res.setHeader('Cache-Control', 'no-store')
+    res.status(500).json({ error: 'collect_failed', message: message.slice(0, 500) })
+  }
 }

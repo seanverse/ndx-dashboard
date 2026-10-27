@@ -8,11 +8,47 @@ export class NotReadyError extends Error {
   }
 }
 
-async function fetchDashboard(signal?: AbortSignal): Promise<DashboardResponse> {
+/** 服务端返回了可读原因时带上来，供页面直接显示，不必再去翻日志 */
+export class ApiError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+  }
+}
+
+interface ErrorBody {
+  error?: string
+  hint?: string
+  message?: string
+  storage?: string
+}
+
+export async function fetchDashboard(signal?: AbortSignal): Promise<DashboardResponse> {
   const res = await fetch('/api/dashboard', { signal, headers: { Accept: 'application/json' } })
-  if (res.status === 503) throw new NotReadyError()
-  if (!res.ok) throw new Error(`接口返回 ${res.status}`)
-  return (await res.json()) as DashboardResponse
+  const raw = await res.text()
+
+  let body: ErrorBody | null = null
+  if (raw) {
+    try {
+      body = JSON.parse(raw) as ErrorBody
+    } catch {
+      // 非 JSON（平台层错误页、网关文案等），原样截一段用于显示
+    }
+  }
+
+  // 存储配置错误与「还没灌数据」都是 503，但前者需要人去改配置，不能混进「准备中」
+  if (res.status === 503 && body?.storage !== 'invalid') throw new NotReadyError()
+
+  if (!res.ok) {
+    const detail = body?.message ?? body?.hint ?? raw.slice(0, 300)
+    throw new ApiError(detail ? `${res.status} · ${detail}` : `接口返回 ${res.status}`, res.status)
+  }
+
+  if (!body) throw new ApiError('接口返回空响应体', res.status)
+  return body as DashboardResponse
 }
 
 /**
