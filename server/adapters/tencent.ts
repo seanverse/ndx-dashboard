@@ -12,7 +12,7 @@
  *   fx_sdxy 返回空串
  */
 
-import { fetchText, numField, strField } from './http'
+import { fetchText, numField, strField } from './http.js'
 
 const BASE = 'https://qt.gtimg.cn/q='
 

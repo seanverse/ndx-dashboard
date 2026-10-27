@@ -12,12 +12,12 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import type { DailyMetrics } from '../shared/types'
-import { checkBearer, unauthorized } from '../server/auth'
-import { etTradeDate } from '../server/calendar'
-import { buildDaily } from '../server/series'
-import { tryWriteDailySnapshot } from '../server/snapshot'
-import { readJson, writeJson } from '../server/store'
+import type { DailyMetrics } from '../shared/types.js'
+import { checkBearer, unauthorized } from '../server/auth.js'
+import { etTradeDate } from '../server/calendar.js'
+import { buildDaily } from '../server/series.js'
+import { tryWriteDailySnapshot } from '../server/snapshot.js'
+import { readJson, writeJson } from '../server/store.js'
 
 /** Hobby 上限即 300 s，显式声明避免平台默认值把它压低 */
 export const maxDuration = 300

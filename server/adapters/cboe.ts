@@ -8,7 +8,7 @@
  *      解析成本会吃掉 Workers 的 10 ms 预算（TECH-001 §4.2）。
  */
 
-import { fetchText } from './http'
+import { fetchText } from './http.js'
 
 const URLS = [
   'https://cdn-api.cboe.com/api/global/us_indices/daily_prices/VXN_History.csv',

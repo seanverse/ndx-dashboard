@@ -16,9 +16,9 @@ import type {
   DailyVerdict,
   DashboardResponse,
   LatestSnapshot,
-} from '../shared/types'
-import { assembleDashboard } from './assemble'
-import { dailyPath, readAt, readJson, writeAt } from './store'
+} from '../shared/types.js'
+import { assembleDashboard } from './assemble.js'
+import { dailyPath, readAt, readJson, writeAt } from './store.js'
 
 /** 日期分片写一次就不再变，缓存一年 */
 const SNAPSHOT_CACHE_MAX_AGE = 365 * 24 * 3600

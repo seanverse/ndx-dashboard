@@ -8,11 +8,11 @@
  *   3. 切换前做 0.3% 偏差校验 —— 能取到数不等于数对（TECH-001 §1.6）
  */
 
-import type { SourceTag } from '../shared/types'
-import { pctChange, round } from '../shared/compute'
-import { fetchFearGreed, type FgiResult } from './adapters/cnn'
-import { fetchSnapshots, type Snapshot } from './adapters/sina'
-import { fetchTencentFutures, fetchTencentNdx } from './adapters/tencent'
+import type { SourceTag } from '../shared/types.js'
+import { pctChange, round } from '../shared/compute/index.js'
+import { fetchFearGreed, type FgiResult } from './adapters/cnn.js'
+import { fetchSnapshots, type Snapshot } from './adapters/sina.js'
+import { fetchTencentFutures, fetchTencentNdx } from './adapters/tencent.js'
 
 /** 同 basis 源之间的最大可接受偏差（TECH-001 §1.6） */
 export const SWITCH_TOLERANCE_PCT = 0.3

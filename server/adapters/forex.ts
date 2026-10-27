@@ -6,7 +6,7 @@
  *   不是常见的 OHLC。整段响应约 46 万字符。
  */
 
-import { fetchText, unwrapJsonp } from './http'
+import { fetchText, unwrapJsonp } from './http.js'
 
 export interface FxBar {
   date: string

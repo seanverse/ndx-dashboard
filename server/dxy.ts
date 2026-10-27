@@ -13,7 +13,7 @@
  * hf_DX / hf_UDI / fx_sdxy 全部取不到，而 MPS 的 60 日 z-score 需要历史序列。
  */
 
-import type { FxBar, FxKey } from './adapters/forex'
+import type { FxBar, FxKey } from './adapters/forex.js'
 
 const CONST = 50.14348112
 const EXPONENTS: Record<FxKey, number> = {

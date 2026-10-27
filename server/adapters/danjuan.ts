@@ -6,7 +6,7 @@
  * 口径不明，不采用；分档一律由本项目的 PE_BANDS 按百分位重算（PRD-001 §3.4）。
  */
 
-import { fetchJson } from './http'
+import { fetchJson } from './http.js'
 
 const URL = 'https://danjuanfunds.com/djapi/index_eva/detail/NDX'
 

@@ -10,8 +10,8 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import type { DailyMetrics, LatestSnapshot } from '../shared/types'
-import { describeEnv, readJson, storeStatus } from '../server/store'
+import type { DailyMetrics, LatestSnapshot } from '../shared/types.js'
+import { describeEnv, readJson, storeStatus } from '../server/store.js'
 
 interface Check {
   step: string

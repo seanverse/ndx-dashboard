@@ -4,8 +4,8 @@
  * 给定等级，文案必须唯一确定（验收 A4）。
  */
 
-import type { AdviceBlock, MomentumSlope, RiskLevel, RuleId } from '../types'
-import { POSITION_BY_RISK } from './bands'
+import type { AdviceBlock, MomentumSlope, RiskLevel, RuleId } from '../types.js'
+import { POSITION_BY_RISK } from './bands.js'
 
 type Rule = Omit<AdviceBlock, 'momentumHint'>
 

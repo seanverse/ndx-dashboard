@@ -50,12 +50,17 @@ server/          仅服务端
   assemble.ts    合并 latest + metrics → DashboardResponse
   snapshot.ts    日快照：剥离上游长序列 + 记录当日结论
   store.ts       Vercel Blob / 本地 .data 双模式
-api/             Vercel Functions：collect.ts / daily.ts / dashboard.ts
+api/             Vercel Functions：collect.ts / daily.ts / dashboard.ts / health.ts
 worker/          CF Worker：只有 scheduled() 发一次 POST
 src/             React 19 + Tailwind v4，8 个面板组件 + 自绘 SVG 原子
-tests/           prd-golden（指标黄金用例）/ calendar / tencent-parse / daily-snapshot / live-sources（实连）
+tests/           prd-golden（指标黄金用例）/ calendar / tencent-parse / daily-snapshot / import-extensions / live-sources（实连）
 scripts/         seed / serve / audit-overflow（CDP 量真实布局）
 ```
+
+> **写 import 时注意**：`api/`、`server/`、`shared/` 里的相对导入必须带 `.js`，即使源文件是 `.ts`。
+> `package.json` 是 `"type": "module"`，这些文件在 Vercel 上按 ESM 加载，缺扩展名会在模块初始化阶段抛
+> `ERR_MODULE_NOT_FOUND`，表现是整站 500 `FUNCTION_INVOCATION_FAILED` 且四个端点同时失效。
+> `tsc` 和 `vite build` 都不报这个错，靠 `tests/import-extensions.test.ts` 拦。
 
 ## 4. 环境变量
 

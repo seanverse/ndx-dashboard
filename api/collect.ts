@@ -12,14 +12,14 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import type { DailyMetrics, LatestSnapshot, Meta, SourceTag } from '../shared/types'
-import { assembleDashboard } from '../server/assemble'
-import { checkBearer, unauthorized } from '../server/auth'
-import { etTradeDate, isTradingWindow, prevTradeDate, tradingPhase } from '../server/calendar'
-import { buildDaily } from '../server/series'
-import { tryWriteDailySnapshot } from '../server/snapshot'
-import { collectIntraday } from '../server/sources'
-import { readJson, writeJson } from '../server/store'
+import type { DailyMetrics, LatestSnapshot, Meta, SourceTag } from '../shared/types.js'
+import { assembleDashboard } from '../server/assemble.js'
+import { checkBearer, unauthorized } from '../server/auth.js'
+import { etTradeDate, isTradingWindow, prevTradeDate, tradingPhase } from '../server/calendar.js'
+import { buildDaily } from '../server/series.js'
+import { tryWriteDailySnapshot } from '../server/snapshot.js'
+import { collectIntraday } from '../server/sources.js'
+import { readJson, writeJson } from '../server/store.js'
 
 /** 两次写入的最小间隔。CF Cron 是 15 分钟，8 分钟可容一次重试而不会双写 */
 const MIN_INTERVAL_MS = 8 * 60_000

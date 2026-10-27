@@ -5,7 +5,7 @@
  * 给 NDX 定情绪属代理指标。Phase 1 在 UI 固定标注，Phase 2 才考虑自建 NDX 版。
  */
 
-import { fetchJson } from './http'
+import { fetchJson } from './http.js'
 
 const URL = 'https://production.dataviz.cnn.io/index/fearandgreed/graphdata'
 const HEADERS = {

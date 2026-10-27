@@ -13,8 +13,8 @@ import type {
   RsiRating,
   ValuationBlock,
   VxnBlock,
-} from '../types'
-import { FGI_BANDS, PE_BANDS, RSI_BANDS, VXN_BANDS, pickBand } from './bands'
+} from '../types.js'
+import { FGI_BANDS, PE_BANDS, RSI_BANDS, VXN_BANDS, pickBand } from './bands.js'
 
 /** M1：涨跌额 / 涨跌幅 / 振幅，分母一律昨收（PRD-001 §3.1 与 §4.3 反推结论） */
 export function buildQuote(input: {

@@ -14,7 +14,7 @@ import type {
   Meta,
   Point,
   SourceTag,
-} from '../shared/types'
+} from '../shared/types.js'
 import {
   buildAdvice,
   buildFearGreed,
@@ -33,8 +33,8 @@ import {
   round,
   stdev,
   mean as avg,
-} from '../shared/compute'
-import { closeMomentUtc, etParts, etTradeDate, tradingPhase } from './calendar'
+} from '../shared/compute/index.js'
+import { closeMomentUtc, etParts, etTradeDate, tradingPhase } from './calendar.js'
 
 /**
  * 评分模型版本。Q8（宏观是否进入综合评分）未定，故默认 v1.0 四维等权，

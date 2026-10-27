@@ -12,9 +12,9 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import type { DailyMetrics, LatestSnapshot } from '../shared/types'
-import { assembleDashboard } from '../server/assemble'
-import { readJson, storeStatus } from '../server/store'
+import type { DailyMetrics, LatestSnapshot } from '../shared/types.js'
+import { assembleDashboard } from '../server/assemble.js'
+import { readJson, storeStatus } from '../server/store.js'
 
 export default async function handler(_req: VercelRequest, res: VercelResponse): Promise<void> {
   // 首访无数据时也要给短缓存，否则前端每 15 秒重试一次会打满 Function 调用

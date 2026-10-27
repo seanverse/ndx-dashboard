@@ -7,7 +7,7 @@
  *   期货日K   GlobalFuturesDailyKLine      JSONP，{date,open,high,low,close,...}
  */
 
-import { fetchJson, fetchText, numField, strField, unwrapJsonp } from './http'
+import { fetchJson, fetchText, numField, strField, unwrapJsonp } from './http.js'
 
 const SINA_REFERER = { Referer: 'https://finance.sina.com.cn/' }
 

@@ -11,7 +11,7 @@ import type {
   RsiRating,
   ValuationState,
   VxnState,
-} from '../types'
+} from '../types.js'
 
 export interface Band<T extends string> {
   /** 上界（不含）。第一档从 −∞ 起。 */

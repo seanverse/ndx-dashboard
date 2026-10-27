@@ -9,7 +9,7 @@
  * 缺数：按剩余因子权重重分配，绝不以 0 或 50 顶替。
  */
 
-import type { MacroPattern, MacroState } from '../types'
+import type { MacroPattern, MacroState } from '../types.js'
 
 export const MPS_WEIGHTS = { oil: 0.3, gold: 0.2, dxy: 0.5 } as const
 export type MacroKey = keyof typeof MPS_WEIGHTS

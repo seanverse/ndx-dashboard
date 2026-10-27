@@ -9,16 +9,16 @@
  * 单源失败不阻断整体：缺哪个就少哪个字段，并在 failedSources 留痕。
  */
 
-import type { DailyMetrics, Point } from '../shared/types'
-import { hv, pctChange, round, windowStats, zScoreLast } from '../shared/compute'
-import { rsi } from '../shared/compute/rsi'
-import { closeMomentUtc, etTradeDate } from './calendar'
-import { checkDxyDeviation, computeDxy } from './dxy'
-import { fetchVxn } from './adapters/cboe'
-import { fetchPe } from './adapters/danjuan'
-import { fetchAllFx } from './adapters/forex'
-import { fetchFuturesDaily, fetchNdxDaily, fetchSnapshots } from './adapters/sina'
-import type { DailyBar } from './adapters/sina'
+import type { DailyMetrics, Point } from '../shared/types.js'
+import { hv, pctChange, round, windowStats, zScoreLast } from '../shared/compute/index.js'
+import { rsi } from '../shared/compute/rsi.js'
+import { closeMomentUtc, etTradeDate } from './calendar.js'
+import { checkDxyDeviation, computeDxy } from './dxy.js'
+import { fetchVxn } from './adapters/cboe.js'
+import { fetchPe } from './adapters/danjuan.js'
+import { fetchAllFx } from './adapters/forex.js'
+import { fetchFuturesDaily, fetchNdxDaily, fetchSnapshots } from './adapters/sina.js'
+import type { DailyBar } from './adapters/sina.js'
 
 /** 落盘序列保留的尾部长度。60 日 z-score 与 60 日相关性只需 120 天余量。 */
 const SERIES_TAIL = 120

@@ -10,7 +10,7 @@
  *   3. 星级 0.5 粒度：round(H/20×2)/2
  */
 
-import type { RiskLevel, ScoreBlock } from '../types'
+import type { RiskLevel, ScoreBlock } from '../types.js'
 import {
   POSITION_BY_RISK,
   RSI_BANDS,
@@ -19,7 +19,7 @@ import {
   clampRiskIndex,
   pickBand,
   riskIndex,
-} from './bands'
+} from './bands.js'
 
 export interface ScoreInput {
   /** CNN 恐贪 0–100 */
